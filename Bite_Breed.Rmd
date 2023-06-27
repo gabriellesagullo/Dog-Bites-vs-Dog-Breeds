@@ -1,0 +1,166 @@
+---
+title: "Investigating the Relationship Between Animal Breed and Animal Bites"
+author: "Gabrielle Sagullo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background and Significance
+
+Dogs are often categorized as friendly, affectionate, aloof, and aggressive based on their breed. Past studies have shown that certain breeds are more aggressive than others such as Pit bulls, Rottweilers, wolf hybrids, Akitas, and Chows. As a result, laws are highly discriminatory against these dog breeds. "Aggressive" breeds are permitted zero tolerance and receive a mandatory death sentence after an incident occurs whether or not the dog was at fault. On the other hand, other breeds that are considered to be friendly are given more chances after an incident has occurred before being euthanized and are given the benefit of the doubt. The insurance industry regulates breed-specific regulations since it was not set by the humane community. As a result, discrimination against "aggressive" dog breeds is also seen at animal shelters. "Aggressive" dog breeds are often immediately euthanized upon arrival at an animal shelter, regardless of their reason of arrival (e.g. pet surrender, stray, pet seizure from neglectful home). 
+
+Examining the discrimination against certain dog breeds does not take away from the seriousness of dog bites and mauings. These are serious public health issues that inflict physical and emotional damage on its victim. Approximately 4.5 million people are bitten each year with increasing incidence.  Victims are most commonly children (especially boys aged 5 to 9 years), and postal workers (1, 2). Most dog bites occur when people approach dogs rather than when dogs approach people. Most victims (76%) get bitten when bending over a dog and positive intended interactions (e.g., attempting to hug a dog) (3). This suggests human behavior is a significant factor and possible cause of dog bites rather than dog temperament. 
+
+To investigate the relationship between dog breed and dog bites, 2 data sets were sourced from Kaggle. The first data set contained Cat and Dog breed parameters (4). A unique row in this data set represents a breed of animal and its ranking for specific parameters such as adaptability, friendliness, exercise needs, health grooming, trainability, affection, drooling potential, ease of training, general health, etc. The second data set represents animals who have bitten a person (5). A unique row in this data set represents a dog or cat, its breed, gender, fur color, and whether or not the animal was vaccinated. These two data sets are joined by animal breeds. Categorical variables included in the combined data set include the animal breed, location of bite on victim, whether or not the animal was released or euthanized, . Numerical variables included in the combined data set include friendliness towards strangers, friendliness towards kids, and prey drive. We may expect dog breeds with higher friendliness ratings towards strangers and kids with lower prey drives to have less bite occurrences in comparison to dog breeds with lower friendliness ratings with strangers and kids with higher prey drive. 
+
+## Data
+
+### Tidying
+
+The two data sets are uploaded and saved as data frames called "animalBites" and "catAndDogParameters." The data frame "animalBites" contains multiple rows containing missing information for breed names and gender of each animal. These rows are also removed from the data set. The data does not need to be pivoted, because is already tidy.
+
+```{r}
+library(tidyverse)
+library(readr)
+
+#save datasets as 2 data.frames
+animalBites <- read.csv("animalBites.csv")
+catAndDogParameters <- read.csv("catAndDogParameters.csv")
+
+#remove rows that have missing information for breed names, only have Male or Female for gender
+animalBites <- animalBites %>%
+  filter(!is.na(BreedIDDesc),
+         animalBites$BreedIDDesc != "", 
+         GenderIDDesc %in% c("MALE", "FEMALE"))
+
+#change case to upper to join data easier
+catAndDogParameters$Name <- toupper(catAndDogParameters$Name)
+
+#the data appears to be tidy; there is no need to pivot the data
+```
+
+### Joining/Merging
+
+There are 2996 observations in the "animalBites" data set, and 216 observations in the "catAndDogParameters" data set. The only ID common between the two data sets is breed name. The two data sets are combined using a left join to add breed information from the "BreedIDDesc" data set to the "animalBites" data set. In the data set "catAndDogParameters," the breed name is under the column "Name", while the breed name for the data set "animalBites" is under the column "BreedIDDesc."
+
+IDs unique to the data set "animalBites" include bite date, species, gender, color, time since vaccination, vaccination date, victim ID, where the victim was bitten, date victim quarantined, the disposition of the animal, date the animal was sent to the pound and released, and outcome of the situation. IDs unique to the data set "catAndDogParameters" include a breed's adaptability, all around friendliness, exercise needs, health and grooming, ability to be trained, adaptability to apartment living, affection towards family, amount of shedding, drooling potential, ease of grooming, ease of training, energy level, exercise needs, friendliness towards strangers, general health, good for novice owners, friendliness towards children, intelligence, intensity, potential for mouthiness, potential for playfulness, potential for weight gain, prey drive, sensitivity level, size, tendency to bark or howl, tolerates being alone, tolerates cold weather, tolerates hot weather, and wanderlust potential.
+
+```{r}
+#join the two data sets using left_join(); add breed information to animalBites data set
+breed_bite <- left_join(animalBites, 
+                        catAndDogParameters, 
+                        by = c("BreedIDDesc" = "Name"))
+
+dim(breed_bite)
+dim(animalBites)
+dim(catAndDogParameters)
+
+head(breed_bite, n = 5)
+```
+
+No observations were added or removed from the "animalBites" data set. An additional 31 columns were added to the data set; each parameter used to describe specific breeds of dogs were applied to an observation where a dog has bitten a person. These parameters are a generalization for each breed. It may not have correctly described the dog for that observation as each dog may stray from the generalization.
+
+### Wrangling
+
+The data set "breed_bite" contains cat and dog species. The data set is filtered to only contain dog species. The following IDs are selected to remain in the data set: name, gender, friendliness towards strangers, friendliness towards kids, prey drive, and sensitivity level. The data set is then arranged so that each column is sorted in descending order then grouped by breed. Another column is added to the data set to create a score for each dog. The two "positive" numerical parameters to a dog are its friendliness ratings toward strangers and children. A "negative" parameter to a dog is its' "prey drive." Since there are more "positive" parameters than "negative," the overall score for a dog is calculated by taking the mean of the two "positive" parameters then subtracting the "negative" parameter. There may be multiple dogs of the same breed. To take this into account, the mean score will be taken for the breed. The data set is summarized based on the mean score for each breed of dog and the number of dogs. The summarized data is then sorted so that the lowest mean score with the most observations of dogs appears first. Only the top 5 dogs with the lowest score is displayed.
+
+```{r}
+# wrangling 
+breed_bite <- breed_bite %>%
+  filter(SpeciesIDDesc == "DOG") %>%     #only keep dog species
+  select(BreedIDDesc,                    #keep the following columns in the data.set, remove all others
+         GenderIDDesc, 
+         FriendlyTowardStrangers, 
+         KidFriendlyDogs, 
+         PreyDrive, 
+         Value.Sensitivity.Level,
+         WhereBittenIDDesc,
+         DispositionIDDesc) %>%
+  arrange(BreedIDDesc, 
+          desc(GenderIDDesc),            #arrange in descending order
+          WhereBittenIDDesc,
+          DispositionIDDesc) %>% 
+  group_by(BreedIDDesc) %>%              #group by name
+  mutate(Score = (FriendlyTowardStrangers + KidFriendlyDogs - PreyDrive - Value.Sensitivity.Level))
+                                         #create a new column creating a score for each dog
+
+#summarise 
+breed_bite %>%
+  summarise(meanScore = mean(Score, na.rm = T), numDogs = n()) -> breed_bite_summarized  
+
+breed_bite_summarized %>%
+  arrange(meanScore) %>%     #sort by meanScore
+  head(n = 5)                #display 5 dogs breeds with the lowest score
+
+breed_bite_summarized %>%
+  arrange(desc(numDogs)) %>%     #sort by number of dogs
+  head(n = 5)                    #display 5 dogs breeds with the the most bite incidents recorded
+```
+
+The breeds of dog with the lowest mean score of -6 is the Akita. There are no units for the score because the rating for each category is arbitrary. The top 5 dog breeds with the lowest score include the Akita, Cane Corso, Dachshund, Lhasa Apso, and Pekingese.
+
+Many dog breeds in the data set do not contain breed parameters, therefore a mean score for the breed could not be calculated. The top 5 dog breeds with the most bite occurrences include the Pit Bull, German Shepherd, Labrador Retriever, Boxer, and Chihuahua.
+
+### Visualization
+
+Each row in the data set is an observation where a dog has bitten a person. A bar graph is used to visualize the frequency of a dog bites per breed. We want to investigate whether stereotypical "aggresive" breeds such as Pit bulls, Rottweilers, wolf hybrids, Akitas, and Chows will have higher frequency of dog bites.
+
+```{r}
+breed_bite %>%
+  ggplot(aes(x = BreedIDDesc))+ 
+  geom_bar() + 
+  labs(x = "Dog Breed", 
+       y = "Count", 
+       title = "Frequency of Dog Bites per Breed") + 
+  theme(axis.text.x = element_text(angle = 90, size = 5)) + 
+  scale_y_continuous(n.breaks = 20)
+```
+
+The Boxer has the most bites (151 bites) recorded from 1985 to 2017, followed by the Shih Tzu with 99 bites, then the Beagle with 94 bites. The top 3 dog breeds with the most counts of dog bite incidents do not include breeds that are stereotyped as "agressive."
+
+A box plot is used to visualize the difference in dog gender and sensitivity level. Dogs with higher sensitivity levels are known to be more reactive. Reactive dogs are not inherently aggressive, but are more likely to lunge and bite when stressed or scared.
+
+```{r}
+breed_bite %>%
+  ggplot(aes(x = GenderIDDesc, y = Value.Sensitivity.Level, fill = GenderIDDesc)) + 
+  geom_boxplot() + 
+  labs(x = "Gender", 
+       y = "Sensitivity Level", 
+       title = "Gender vs. Sensitivity Level") + 
+  scale_y_continuous(n.breaks = 10) + 
+  theme_bw()
+```
+
+There is no difference between the sensitivity of male and female dogs. Both have a mean of a sensitivity level of 4.0. Gender is not a factor in the cause of dog bite incidents.
+
+The relationship between prey drive and friendliness for each breed towards kids is explored. It is suspected that dogs with higher prey drive have lower ratings for friendliness towards children. A scatter plot is made to show the relationship between the three variables.
+
+```{r}
+breed_bite %>%
+  ggplot(aes(x = KidFriendlyDogs, y = PreyDrive, color = BreedIDDesc)) + #ggplot data
+  geom_point(size = 3) +                                          #scatterplot with point size of 3
+  labs(x = "Friendliness towards Kids",                           #title and axis titles
+       y = "Prey Drive", 
+       title = "Friendliness towads kids vs. prey drive") +
+  theme_gray() +                                                  #grey theme
+  scale_x_continuous(minor_breaks = 0) + 
+  scale_y_continuous(minor_breaks = 0)
+```
+
+Children are the most common victim of dog bites. Since there is no correlation between a breed's prey drive and friendliness towards kids, we can conclude dogs' friendliness towards children is not dependent on their prey drive. We can infer that dogs do not bite children because they view them as prey. There must be another factor that causes dogs to bite children.
+
+## References
+
+1.  Weiss, H. B., Friedman, D. I., & Coben, J. H. (1998). Incidence of dog bite injuries treated in emergency departments. Jama, 279(1), 51-53.
+
+2.  Sacks JJ, Kresnow M, Houston B. Dog bites: how big a problem? Inj Prev 1996;2:52--54. 
+
+3.  Oxley, J. A., Christley, R., & Westgarth, C. (2018). Contexts and consequences of dog bite incidents. Journal of Veterinary Behavior, 23, 33-39.
+
+4.  Cat and dog breed parameters: <https://www.kaggle.com/datasets/hocop1/cat-and-dog-breeds-parameters>
+
+5.  Animal bites: <https://www.kaggle.com/datasets/rtatman/animal-bites>
